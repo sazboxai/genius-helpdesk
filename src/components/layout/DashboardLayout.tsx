@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { 
@@ -10,7 +9,10 @@ import {
   ChevronDown,
   Home,
   GitFork,
-  FileText
+  FileText,
+  HomeIcon,
+  TicketIcon,
+  GitForkIcon,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAuth } from '../../contexts/AuthContext'
@@ -24,54 +26,24 @@ import {
 } from '../ui/dropdown-menu'
 import { Button } from '../ui/button'
 
-interface SidebarItem {
-  name: string
-  href: string
-  icon: React.ElementRef<any>
-  children?: { name: string; href: string }[]
+const navigation = [
+  { name: 'Home', href: '/dashboard', icon: HomeIcon },
+  { name: 'Teams', href: '/teams', icon: Users },
+  { name: 'Users', href: '/users', icon: Users, hasSubmenu: true },
+  { name: 'Routing', href: '/routing', icon: GitForkIcon },
+  { name: 'Tickets', href: '/tickets', icon: TicketIcon, hasSubmenu: true },
+  { name: 'Reports', href: '/reports', icon: BarChart3 },
+  { name: 'Settings', href: '/settings', icon: Settings },
+]
+
+interface DashboardLayoutProps {
+  children: React.ReactNode
 }
 
-const sidebarItems: SidebarItem[] = [
-  { name: 'Home', href: '/dashboard', icon: Home },
-  { name: 'Teams', href: '/teams', icon: Users },
-  { 
-    name: 'Users', 
-    href: '/users', 
-    icon: Users,
-    children: [
-      { name: 'All Users', href: '/users' },
-      { name: 'Invitations', href: '/users/invites' },
-    ]
-  },
-  { name: 'Routing', href: '/routing', icon: GitFork },
-  { 
-    name: 'Tickets', 
-    href: '/tickets', 
-    icon: Ticket,
-    children: [
-      { name: 'All Tickets', href: '/tickets' },
-      { name: 'Open', href: '/tickets/open' },
-      { name: 'Pending', href: '/tickets/pending' },
-      { name: 'Closed', href: '/tickets/closed' },
-    ]
-  },
-  { name: 'Reports', href: '/reports', icon: BarChart3 },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
-
-const headerNavItems = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Tickets', href: '/tickets', icon: Ticket },
-  { name: 'Teams', href: '/teams', icon: Users },
-  { name: 'Reports', href: '/reports', icon: BarChart3 },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
-
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, organization, userRole, signOut } = useAuth()
-  const [expandedItems, setExpandedItems] = useState<string[]>([])
 
   const handleSignOut = async () => {
     await signOut()
@@ -85,14 +57,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       .map(n => n[0])
       .join('')
       .toUpperCase()
-  }
-
-  const toggleExpand = (name: string) => {
-    setExpandedItems(prev => 
-      prev.includes(name) 
-        ? prev.filter(item => item !== name)
-        : [...prev, name]
-    )
   }
 
   return (
@@ -110,7 +74,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
             {/* Navigation Items */}
             <div className="flex flex-1 justify-center">
-              {headerNavItems.map((item) => (
+              {navigation.map((item) => (
                 <Link
                   key={item.name}
                   to={item.href}
@@ -185,58 +149,64 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className="flex">
-        {/* Sidebar Navigation */}
-        <aside className="w-64 bg-white shadow-sm min-h-[calc(100vh-4rem)]">
-          <nav className="px-2 py-4">
-            {sidebarItems.map((item) => (
-              <div key={item.name}>
-                <div
-                  className={cn(
-                    "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                    location.pathname === item.href
-                      ? "bg-gray-100 text-gray-900"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  )}
-                  onClick={() => item.children && toggleExpand(item.name)}
-                >
-                  <item.icon className="mr-3 h-4 w-4" />
-                  {item.name}
-                  {item.children && (
-                    <ChevronDown 
-                      className={cn(
-                        "ml-auto h-4 w-4 transition-transform",
-                        expandedItems.includes(item.name) && "transform rotate-180"
-                      )} 
-                    />
-                  )}
-                </div>
-                {item.children && expandedItems.includes(item.name) && (
-                  <div className="ml-8 space-y-1">
-                    {item.children.map((child) => (
-                      <Link
-                        key={child.name}
-                        to={child.href}
-                        className={cn(
-                          "group flex items-center px-2 py-2 text-sm font-medium rounded-md",
-                          location.pathname === child.href
-                            ? "bg-gray-100 text-gray-900"
-                            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                        )}
-                      >
-                        {child.name}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+        {/* Sidebar */}
+        <div className="fixed inset-y-0 flex w-64 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
+            <div className="flex flex-1 flex-col overflow-y-auto pt-5">
+              <div className="flex flex-shrink-0 items-center px-4">
+                <span className="text-xl font-bold">AutoCRM</span>
               </div>
-            ))}
-          </nav>
-        </aside>
+              <nav className="mt-8 flex-1 space-y-1 bg-white px-2">
+                {navigation.map((item) => {
+                  const isActive = location.pathname === item.href
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={cn(
+                        'group flex items-center px-2 py-2 text-sm font-medium rounded-md',
+                        isActive
+                          ? 'bg-gray-100 text-blue-600'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      )}
+                    >
+                      <item.icon
+                        className={cn(
+                          'mr-3 h-5 w-5 flex-shrink-0',
+                          isActive
+                            ? 'text-blue-600'
+                            : 'text-gray-400 group-hover:text-gray-500'
+                        )}
+                        aria-hidden="true"
+                      />
+                      {item.name}
+                      {item.hasSubmenu && (
+                        <svg
+                          className="ml-auto h-5 w-5 text-gray-400"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </Link>
+                  )
+                })}
+              </nav>
+            </div>
+          </div>
+        </div>
 
-        {/* Main Content */}
-        <main className="flex-1 p-8">
-          {children}
-        </main>
+        {/* Main content */}
+        <div className="flex flex-1 flex-col pl-64">
+          <main className="flex-1 p-6">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   )

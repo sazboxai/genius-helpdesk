@@ -1,41 +1,21 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { AuthLayout } from '../../components/layout/AuthLayout'
 
 export function AuthCallback() {
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const supabase = useSupabaseClient()
 
   useEffect(() => {
-    const handleCallback = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser()
-      
-      if (error) {
-        console.error('Error:', error.message)
-        navigate('/auth/sign-in')
-        return
-      }
-
-      if (user) {
-        // Check if user is already part of any organization
-        const { data: memberships } = await supabase
-          .from('org_members')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .limit(1)
-
-        if (memberships && memberships.length > 0) {
-          navigate('/dashboard', { replace: true })
-        } else {
-          navigate('/auth/create-org', { replace: true })
-        }
-      }
+    const token = searchParams.get('invitation_token')
+    if (token) {
+      navigate(`/auth/invitation-signup?token=${token}`)
+    } else {
+      navigate('/dashboard')
     }
-
-    handleCallback()
-  }, [navigate, supabase])
+  }, [searchParams])
 
   return (
     <AuthLayout

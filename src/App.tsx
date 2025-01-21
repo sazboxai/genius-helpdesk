@@ -20,6 +20,10 @@ import { useEffect } from 'react'
 import { Toaster } from "./components/ui/toaster"
 import { Teams } from './pages/teams/Teams'
 import { AcceptInvite } from './pages/auth/AcceptInvite'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { DashboardLayout } from './components/layout/DashboardLayout'
+import { ResetPassword } from './pages/auth/ResetPassword'
+import { InvitationSignUp } from './pages/auth/InvitationSignUp'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -60,6 +64,8 @@ function AppContent() {
   useEffect(() => {
     if (user && location.pathname === '/') {
       navigate('/dashboard', { replace: true })
+    } else if (!user && location.pathname !== '/' && !isAuthPage) {
+      navigate('/auth/sign-in', { replace: true })
     }
   }, [user, location.pathname])
 
@@ -68,11 +74,17 @@ function AppContent() {
       {!isAuthPage && !isDashboardRoute && <Navbar />}
       <main className={!isDashboardRoute ? "p-4" : ""}>
         <Routes>
+          {/* Public Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/auth/sign-up" element={<SignUp />} />
           <Route path="/auth/sign-in" element={<SignIn />} />
           <Route path="/auth/verify-email" element={<VerifyEmail />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/accept-invite" element={<AcceptInvite />} />
+          <Route path="/auth/invitation-signup" element={<InvitationSignUp />} />
+          <Route path="/auth/reset-password" element={<ResetPassword />} />
+
+          {/* Protected Routes */}
           <Route 
             path="/auth/create-org" 
             element={
@@ -82,12 +94,12 @@ function AppContent() {
             } 
           />
           <Route 
-            path="/auth/join-org" 
+            path="/auth/join" 
             element={
               <PrivateRoute>
                 <JoinOrganization />
               </PrivateRoute>
-            } 
+            }
           />
           <Route 
             path="/auth/select-org" 
@@ -106,14 +118,6 @@ function AppContent() {
             } 
           />
           <Route 
-            path="/auth/accept-invite" 
-            element={
-              <PrivateRoute>
-                <AcceptInvite />
-              </PrivateRoute>
-            } 
-          />
-          <Route 
             path="/dashboard/*" 
             element={
               <PrivateRoute>
@@ -125,16 +129,18 @@ function AppContent() {
             path="/teams" 
             element={
               <PrivateRoute>
-                <Teams />
+                <DashboardLayout>
+                  <Teams />
+                </DashboardLayout>
               </PrivateRoute>
             } 
           />
+          
+          {/* Catch all route */}
           <Route 
             path="*" 
             element={
-              <PrivateRoute>
-                <Navigate to="/dashboard" replace />
-              </PrivateRoute>
+              <Navigate to="/auth/sign-in" replace />
             }
           />
         </Routes>

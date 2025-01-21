@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { AuthLayout } from '../../components/layout/AuthLayout'
+import { toast } from '../../components/ui/use-toast'
 import type { Database } from '../../types/database'
 
 export function SignIn() {
@@ -14,47 +15,78 @@ export function SignIn() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (authError) throw authError
+      if (error) throw error
 
       navigate('/auth/select-org')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : 'Failed to sign in')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!email) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address first.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      })
+
+      if (error) throw error
+
+      toast({
+        title: "Check your email",
+        description: "We've sent you a password reset link.",
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reset link')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <AuthLayout 
-      title="Sign in to AutoCRM"
-      description="Welcome back"
+    <AuthLayout
+      title="Welcome back"
+      description="Sign in to your account"
     >
-      <form onSubmit={handleSignIn} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="text-red-600 text-sm">{error}</div>
+          <div className="text-sm text-red-600">{error}</div>
         )}
 
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-            Email address
+            Email
           </label>
           <Input
             id="email"
             type="email"
-            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
             className="mt-1"
           />
         </div>
@@ -66,9 +98,9 @@ export function SignIn() {
           <Input
             id="password"
             type="password"
-            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
             className="mt-1"
           />
         </div>
@@ -81,12 +113,21 @@ export function SignIn() {
           {loading ? 'Signing in...' : 'Sign in'}
         </Button>
 
-        <p className="text-center text-sm text-gray-600">
-          Don't have an account?{' '}
-          <a href="/auth/sign-up" className="font-medium text-blue-600 hover:text-blue-500">
-            Sign up
-          </a>
-        </p>
+        <div className="flex items-center justify-between mt-4">
+          <button
+            type="button"
+            onClick={handleResetPassword}
+            className="text-sm text-blue-600 hover:text-blue-500"
+          >
+            Forgot your password?
+          </button>
+          <Link
+            to="/auth/sign-up"
+            className="text-sm text-blue-600 hover:text-blue-500"
+          >
+            Create an account
+          </Link>
+        </div>
       </form>
     </AuthLayout>
   )

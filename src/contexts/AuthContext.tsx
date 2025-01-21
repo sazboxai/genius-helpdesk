@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean
   signOut: () => Promise<void>
   setCurrentOrganization: (org: Organization) => void
+  assignUserToOrganization: (userId: string, orgId: string, role: UserRole) => Promise<{ success: boolean, error?: any }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadUserOrganization = async (userId: string) => {
     try {
-      const { data: memberData, error: memberError } = await supabase
+      const { data: memberData } = await supabase
         .from('org_members')
         .select(`
           role,
@@ -53,16 +54,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         `)
         .eq('user_id', userId)
         .eq('status', 'active')
-        .single()
-
-      if (memberError) {
-        console.error('Error loading organization:', memberError)
-        return
-      }
+        .maybeSingle()
 
       if (memberData) {
+        console.log('Loaded organization:', memberData) // Debug log
         setOrganization(memberData.organizations as Organization)
-        setUserRole(memberData.role)
+        setUserRole(memberData.role as UserRole)
+      } else {
+        setOrganization(null)
+        setUserRole(null)
       }
     } catch (error) {
       console.error('Error loading organization:', error)
@@ -75,8 +75,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
   }
 
-  const setCurrentOrganization = (org: Organization) => {
+  const setCurrentOrganization = async (org: Organization) => {
     setOrganization(org)
+    // Also set the user role since they're the creator
+    setUserRole('owner')
+    
+    // Force reload organization data to ensure everything is in sync
+    if (session?.user) {
+      await loadUserOrganization(session.user.id)
+    }
+  }
+
+  const assignUserToOrganization = async (userId: string, orgId: string, role: UserRole) => {
+    try {
+      // 1. Create organization membership
+      const { error: membershipError } = await supabase
+        .from('org_members')
+        .insert({
+          org_id: orgId,
+          user_id: userId,
+          role: role,
+          status: 'active'
+        })
+
+      if (membershipError) throw membershipError
+
+      // 2. Load the organization data
+      await loadUserOrganization(userId)
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error assigning user to organization:', error)
+      return { success: false, error }
+    }
   }
 
   const value = {
@@ -85,7 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     userRole,
     loading,
     signOut,
-    setCurrentOrganization
+    setCurrentOrganization,
+    assignUserToOrganization
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,99 +1,91 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useSupabaseClient } from '@supabase/auth-helpers-react'
-import { Button } from '../../components/ui/button'
-import { Input } from '../../components/ui/input'
-import { AuthLayout } from '../../components/layout/AuthLayout'
+import { useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import type { Database } from '../../types/database'
+import { useSupabaseClient } from '@supabase/auth-helpers-react'
+import { useToast } from '../../components/ui/use-toast'
 
 export function JoinOrganization() {
+  const { user, assignUserToOrganization } = useAuth()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token')
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const supabase = useSupabaseClient<Database>()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [inviteCode, setInviteCode] = useState('')
+  const supabase = useSupabaseClient()
+  const { toast } = useToast()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
+  useEffect(() => {
+    if (token) {
+      handleInvitation()
+    }
+  }, [token])
 
-    setLoading(true)
-    setError(null)
-
+  const handleInvitation = async () => {
     try {
-      // Verify and accept invitation
-      const { data: invitation, error: inviteError } = await supabase
-        .from('org_members')
-        .select('*, organization:organizations(*)')
-        .eq('invite_code', inviteCode)
-        .eq('invited_email', user.email)
+      // 1. Get invitation details
+      const { data: invitation, error } = await supabase
+        .from('invitations')
+        .select('*, organizations(name)')
+        .eq('token', token)
         .single()
 
-      if (inviteError) throw new Error('Invalid or expired invite code')
+      if (error) throw error
 
-      // Update membership status
-      const { error: updateError } = await supabase
-        .from('org_members')
-        .update({
-          status: 'active',
-          joined_at: new Date().toISOString(),
-          user_id: user.id,
-          invite_code: null // Clear the invite code after use
+      if (user) {
+        // If logged in user is not the invited user
+        if (user.email !== invitation.email) {
+          toast({
+            title: 'Wrong Account',
+            description: `This invitation was sent to ${invitation.email}. Please sign out first.`,
+            variant: 'destructive'
+          })
+          navigate('/auth/sign-out')
+          return
+        }
+
+        // Assign user to organization
+        const { success, error: assignError } = await assignUserToOrganization(
+          user.id,
+          invitation.org_id,
+          invitation.role as UserRole
+        )
+
+        if (!success) throw assignError
+
+        // Update invitation status
+        await supabase
+          .from('invitations')
+          .update({
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+            user_id: user.id
+          })
+          .eq('id', invitation.id)
+
+        toast({
+          title: 'Success',
+          description: 'You have joined the organization'
         })
-        .eq('id', invitation.id)
 
-      if (updateError) throw updateError
-
-      navigate(`/org/${invitation.organization.id}/dashboard`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
+        navigate('/dashboard')
+      } else {
+        // Redirect to invitation signup instead of regular signup
+        navigate(`/auth/invitation-signup?token=${token}`)
+      }
+    } catch (error) {
+      console.error('Error handling invitation:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to process invitation'
+      })
+      navigate('/auth/sign-in')
     }
   }
 
   return (
-    <AuthLayout
-      title="Join Organization"
-      description="Enter your invitation code"
-    >
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="text-red-600 text-sm">{error}</div>
-        )}
-
-        <div>
-          <label htmlFor="inviteCode" className="block text-sm font-medium text-gray-700">
-            Invitation Code
-          </label>
-          <Input
-            id="inviteCode"
-            type="text"
-            required
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value)}
-            className="mt-1"
-            placeholder="Enter your invitation code"
-          />
-        </div>
-
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={loading}
-        >
-          {loading ? 'Joining...' : 'Join Organization'}
-        </Button>
-
-        <p className="text-center text-sm text-gray-600">
-          Don't have an invite code?{' '}
-          <a href="/auth/create-org" className="font-medium text-blue-600 hover:text-blue-500">
-            Create a new organization
-          </a>
-        </p>
-      </form>
-    </AuthLayout>
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="text-center">
+        <h2 className="text-lg font-medium">Processing invitation...</h2>
+        <p className="text-muted-foreground">Please wait while we verify your invitation.</p>
+      </div>
+    </div>
   )
 } 

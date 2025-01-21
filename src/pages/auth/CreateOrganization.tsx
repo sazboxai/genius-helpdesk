@@ -1,62 +1,97 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
-import { Button } from '../../components/ui/button'
-import { Input } from '../../components/ui/input'
-import { AuthLayout } from '../../components/layout/AuthLayout'
 import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../components/ui/use-toast'
+import { AuthLayout } from '../../components/layout/AuthLayout'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '../../components/ui/form'
+import { Input } from '../../components/ui/input'
+import { Button } from '../../components/ui/button'
 import type { Database } from '../../types/database'
 
+const createOrgSchema = z.object({
+  name: z.string().min(1, 'Organization name is required'),
+  slug: z.string()
+    .min(1, 'URL slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Only lowercase letters, numbers, and hyphens allowed')
+})
+
+type CreateOrgFormData = z.infer<typeof createOrgSchema>
+
 export function CreateOrganization() {
+  const { user, setCurrentOrganization } = useAuth()
   const navigate = useNavigate()
-  const { user } = useAuth()
   const supabase = useSupabaseClient<Database>()
+  const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [slug, setSlug] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const form = useForm<CreateOrgFormData>({
+    resolver: zodResolver(createOrgSchema),
+    defaultValues: {
+      name: '',
+      slug: ''
+    }
+  })
+
+  const onSubmit = async (data: CreateOrgFormData) => {
     if (!user) return
-
+    
     setLoading(true)
-    setError(null)
-
     try {
-      // Create organization
+      // 1. Create the organization
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .insert({
-          name,
-          slug,
-          created_by: user.id,
-          subscription_tier: 'free',
-          max_users: 5,
-          is_active: true
+          name: data.name,
+          slug: data.slug,
+          created_by: user.id
         })
         .select()
         .single()
 
       if (orgError) throw orgError
 
-      // Create owner membership
+      // 2. Create the membership
       const { error: memberError } = await supabase
         .from('org_members')
         .insert({
           org_id: org.id,
           user_id: user.id,
-          role: 'admin',
-          status: 'active',
-          joined_at: new Date().toISOString()
+          role: 'owner',
+          status: 'active'
         })
 
       if (memberError) throw memberError
 
-      // Navigate to invite members page
-      navigate('/auth/invite-members')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      // 3. Update the auth context with new organization
+      await setCurrentOrganization(org)
+
+      toast({
+        title: 'Success',
+        description: 'Organization created successfully'
+      })
+
+      // 4. Add a small delay to ensure state is updated
+      setTimeout(() => {
+        navigate('/dashboard', { replace: true })
+      }, 100)
+    } catch (error) {
+      console.error('Error creating organization:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create organization',
+        variant: 'destructive'
+      })
     } finally {
       setLoading(false)
     }
@@ -67,51 +102,51 @@ export function CreateOrganization() {
       title="Create your organization"
       description="Set up your help desk workspace"
     >
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="text-red-600 text-sm">{error}</div>
-        )}
-
-        <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-            Organization Name
-          </label>
-          <Input
-            id="name"
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1"
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Organization Name</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <div>
-          <label htmlFor="slug" className="block text-sm font-medium text-gray-700">
-            URL Slug
-          </label>
-          <Input
-            id="slug"
-            type="text"
-            required
-            pattern="^[a-z0-9-]+$"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value.toLowerCase())}
-            className="mt-1"
+          <FormField
+            control={form.control}
+            name="slug"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>URL Slug</FormLabel>
+                <FormControl>
+                  <Input 
+                    {...field} 
+                    onChange={(e) => field.onChange(e.target.value.toLowerCase())}
+                  />
+                </FormControl>
+                <p className="text-sm text-muted-foreground">
+                  Only lowercase letters, numbers, and hyphens
+                </p>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          <p className="mt-1 text-sm text-gray-500">
-            Only lowercase letters, numbers, and hyphens
-          </p>
-        </div>
 
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={loading}
-        >
-          {loading ? 'Creating...' : 'Create Organization'}
-        </Button>
-      </form>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading}
+          >
+            {loading ? 'Creating Organization...' : 'Create Organization'}
+          </Button>
+        </form>
+      </Form>
     </AuthLayout>
   )
 } 

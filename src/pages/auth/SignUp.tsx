@@ -1,45 +1,76 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
-import { Button } from '../../components/ui/button'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '../../components/ui/form'
 import { Input } from '../../components/ui/input'
+import { Button } from '../../components/ui/button'
+import { useToast } from '../../components/ui/use-toast'
 import { AuthLayout } from '../../components/layout/AuthLayout'
-import type { Database } from '../../types/database'
+
+const signUpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  fullName: z.string().min(1, 'Full name is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string()
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+})
+
+type SignUpFormData = z.infer<typeof signUpSchema>
 
 export function SignUp() {
   const navigate = useNavigate()
-  const supabase = useSupabaseClient<Database>()
+  const supabase = useSupabaseClient()
+  const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const form = useForm<SignUpFormData>({
+    resolver: zodResolver(signUpSchema),
+    defaultValues: {
+      email: '',
+      fullName: '',
+      password: '',
+      confirmPassword: ''
+    }
+  })
+
+  const onSubmit = async (data: SignUpFormData) => {
     setLoading(true)
-    setError(null)
-
     try {
-      const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: {
-            full_name: fullName,
-          },
-        },
+          data: { full_name: data.fullName }
+        }
       })
 
-      if (authError) throw authError
+      if (signUpError) throw signUpError
 
-      navigate('/auth/verify-email', { 
-        state: { email }
+      toast({
+        title: 'Success',
+        description: 'Please check your email to verify your account'
       })
 
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      navigate('/auth/verify-email')
+    } catch (error) {
+      console.error('Error signing up:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create account',
+        variant: 'destructive'
+      })
     } finally {
       setLoading(false)
     }
@@ -50,68 +81,80 @@ export function SignUp() {
       title="Create your account" 
       description="Start your 14-day free trial with AutoCRM"
     >
-      <form onSubmit={handleSignUp} className="space-y-6">
-        {error && (
-          <div className="text-red-600 text-sm">{error}</div>
-        )}
-        
-        <div>
-          <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
-            Full Name
-          </label>
-          <Input
-            id="fullName"
-            type="text"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="mt-1"
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input {...field} type="email" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-            Email address
-          </label>
-          <Input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1"
+          <FormField
+            control={form.control}
+            name="fullName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Full Name</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-            Password
-          </label>
-          <Input
-            id="password"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1"
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input type="password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={loading}
-        >
-          {loading ? 'Creating account...' : 'Create account'}
-        </Button>
+          <FormField
+            control={form.control}
+            name="confirmPassword"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Confirm Password</FormLabel>
+                <FormControl>
+                  <Input type="password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <p className="text-center text-sm text-gray-600">
-          Already have an account?{' '}
-          <a href="/auth/sign-in" className="font-medium text-blue-600 hover:text-blue-500">
-            Sign in
-          </a>
-        </p>
-      </form>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading}
+          >
+            {loading ? 'Creating account...' : 'Create account'}
+          </Button>
+
+          <p className="text-center text-sm text-gray-600">
+            Already have an account?{' '}
+            <a href="/auth/sign-in" className="font-medium text-blue-600 hover:text-blue-500">
+              Sign in
+            </a>
+          </p>
+        </form>
+      </Form>
     </AuthLayout>
   )
 } 

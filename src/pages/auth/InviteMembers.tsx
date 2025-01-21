@@ -46,7 +46,7 @@ export function InviteMembers() {
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!organization) {
-      console.error('No organization found')
+      setError('No organization selected')
       return
     }
 
@@ -54,82 +54,65 @@ export function InviteMembers() {
     setError(null)
 
     try {
-      console.log('Starting invitation process...')
-
-      // Create invites for each email
-      await Promise.all(
+      const results = await Promise.all(
         invites.map(async ({ email, role }) => {
-          try {
-            console.log(`Processing invite for ${email} with role ${role}`)
+          if (!email || !role) {
+            throw new Error('Email and role are required')
+          }
 
-            // First create the pending membership
-            const { error: memberError, data: membership } = await supabase
-              .from('org_members')
-              .insert({
-                org_id: organization.id,
-                invited_email: email.toLowerCase(),
-                role,
-                status: 'pending',
-                invite_code: crypto.randomUUID()
-              })
-              .select()
-              .single()
+          // Create the invite code
+          const invite_code = crypto.randomUUID()
 
-            if (memberError) {
-              console.error('Member creation error:', memberError)
-              throw memberError
-            }
-
-            console.log('Created membership:', membership)
-
-            // Call the edge function
-            console.log('Calling edge function with data:', {
+          // Call the edge function
+          const { data, error } = await supabase.functions.invoke('invite-member', {
+            body: {
               email: email.toLowerCase(),
               organization_id: organization.id,
-              invite_code: membership.invite_code,
-              role: role
-            })
-
-            const { data: inviteData, error: inviteError } = await supabase.functions.invoke(
-              'invite-member',
-              {
-                body: {
-                  email: email.toLowerCase(),
-                  organization_id: organization.id,
-                  invite_code: membership.invite_code,
-                  role: role
-                }
-              }
-            )
-
-            console.log('Edge function response:', { data: inviteData, error: inviteError })
-
-            if (inviteError) {
-              console.error('Invitation error:', inviteError)
-              throw inviteError
+              invite_code,
+              role,
+              redirectBaseUrl: window.location.origin
             }
+          })
 
-            console.log('Successfully sent invitation to:', email)
-          } catch (error) {
-            console.error(`Error processing invite for ${email}:`, error)
-            throw error
+          // Check if it's a member exists error (409 status)
+          if (error?.message?.includes('already')) {
+            toast({
+              title: "Member Exists",
+              description: error.message,
+              variant: "destructive"
+            })
+            return { email, skipped: true, reason: error.message }
           }
+
+          // Handle other errors
+          if (error) {
+            console.error('Edge function error:', error)
+            throw new Error(error.message || 'Failed to send invitation')
+          }
+
+          // Success case
+          return { email, success: true }
         })
       )
 
-      toast({
-        title: "Invitations sent successfully!",
-        description: "Team members will receive an email to join your organization.",
-      })
+      const successful = results.filter(r => r.success).length
+      const skipped = results.filter(r => r.skipped).length
 
-      navigate('/dashboard', { replace: true })
+      if (successful > 0) {
+        toast({
+          title: "Invitations Sent",
+          description: `Successfully sent ${successful} invitation${successful !== 1 ? 's' : ''}${
+            skipped > 0 ? ` (${skipped} skipped)` : ''
+          }`,
+        })
+        navigate('/teams')
+      } else if (skipped > 0) {
+        setError('No new invitations were sent - all emails were already members or invited')
+      }
+
     } catch (err) {
-      console.error('Invitation process error:', err)
-      setError(
-        err instanceof Error 
-          ? err.message 
-          : 'Failed to send invitations. Please try again.'
-      )
+      console.error('Error sending invites:', err)
+      setError(err instanceof Error ? err.message : 'Failed to send invitations')
     } finally {
       setLoading(false)
     }
